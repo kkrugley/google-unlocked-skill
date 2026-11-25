@@ -137,3 +137,49 @@ npm run build
 Сборки `dist/`, зависимости, виртуальное окружение и машинные настройки генерируются локально и не входят в Git.
 
 Проект основан на [Ibit-to/google-unlocked](https://github.com/Ibit-to/google-unlocked). Модели и параметры распознавания происходят из [Free AI ReCaptcha Solver by Raptor](https://github.com/CaptchaRaptor/captchaplugin); их лицензия MIT сохранена в [native/models/LICENSE](native/models/LICENSE).
+
+## Google Unlocked для ChatGPT, Codex и Claude
+
+MCP-инструмент `search_google_unlocked` открывает первую страницу Google в Chromium. Он возвращает обычные ссылки, жалобы Lumen из этой выдачи, домены и число URL, перечисленных в жалобах. Для каждого домена он строит Google-ссылку с оператором `site:` и добавляет ссылки на подтверждающие жалобы. Доступность и состав выдачи зависят от региона, сети и сессии Google.
+
+### Запуск
+
+Из корня репозитория, с Node.js 20.19 или новее:
+
+```bash
+npm ci
+npx playwright-core install chromium
+```
+
+Можно использовать установленный Chromium или Chrome, указав путь к бинарному файлу в `GOOGLE_UNLOCKED_CHROME`. По умолчанию браузер запускается без окна. Для ручной проверки Google или Lumen запускайте MCP с `GOOGLE_UNLOCKED_HEADLESS=0` на машине с графической сессией. После проверки вызовите ту же команду в чате ещё раз. Браузерная сессия живёт до остановки процесса MCP.
+
+### Подключение
+
+**Codex CLI и Claude Code.** Замените `/path/to/google-unlocked-skill` на абсолютный путь к репозиторию.
+
+```bash
+codex mcp add google-unlocked --env GOOGLE_UNLOCKED_HEADLESS=0 -- node /path/to/google-unlocked-skill/mcp/index.js
+claude mcp add --env GOOGLE_UNLOCKED_HEADLESS=0 --transport stdio google-unlocked -- node /path/to/google-unlocked-skill/mcp/index.js
+```
+
+Навык в [skills/google-unlocked](skills/google-unlocked/SKILL.md) дополняет MCP инструкциями по ссылкам и неполным результатам. Для проектной установки скопируйте папку `google-unlocked` в `.agents/skills/` для Codex или `.claude/skills/` для Claude Code в проекте, где хотите использовать навык.
+
+**ChatGPT и Claude в веб-интерфейсе.** Запустите Streamable HTTP:
+
+```bash
+GOOGLE_UNLOCKED_HEADLESS=0 npm run mcp -- --http
+```
+
+Сервер слушает `http://127.0.0.1:8765/mcp`. Порт можно задать через `PORT`.
+
+- **ChatGPT** → Plugins → Add custom MCP server. Для локального сервера выберите Secure MCP Tunnel и укажите этот адрес как локальную цель клиента туннеля. Для опубликованного сервера укажите HTTPS-адрес с путём `/mcp`. Доступ зависит от прав рабочего пространства. [Инструкция ChatGPT](https://developers.openai.com/api/docs/guides/custom-mcp-server) · [Настройка туннеля](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)
+- **Claude** → Customize → Connectors → Add custom connector. Укажите HTTPS-адрес с путём `/mcp`, доступный серверам Claude через HTTPS-прокси. Для приватного доступа задайте `GOOGLE_UNLOCKED_MCP_TOKEN` на сервере и передайте тот же секрет в настройках заголовков коннектора как `Authorization: Bearer …`. [Инструкция Claude](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)
+
+В открытом чате задайте, например: «Используй Google Unlocked. Найди в Google “Ubuntu download” и проверь, есть ли в выдаче ссылки на жалобы Lumen». Для известных жалоб инструмент принимает `notice_ids`, сохраняя исходный текст запроса в ссылках `site:`.
+
+### Доступ к Lumen и объём результатов
+
+- Без токена используется публичная страница Lumen в Chromium. Если Lumen запрашивает проверку, пройдите её в открытом браузере. MCP сообщает статус проверки и приостанавливает загрузку следующих жалоб.
+- С исследовательским токеном задайте `LUMEN_TOKEN` в окружении процесса MCP до запуска. Токен передаётся только API Lumen. В ответ могут входить до пяти полных адресов на домен, если API их вернул. Сервер сообщает об отклонённом токене. Для перехода к публичному режиму перезапустите его без токена.
+- Один вызов обрабатывает до восьми жалоб и возвращает до 30 доменов. Поля `notice_ids_found` и `domains_found` показывают, когда данных было больше. Успешно загруженные жалобы кэшируются в памяти процесса до 30 дней с ограничением в 128 записей.
+- Жалоба указывает, какие адреса были заявлены в Lumen. Такая запись сама по себе не подтверждает нарушение и не восстанавливает удалённый результат в Google.
